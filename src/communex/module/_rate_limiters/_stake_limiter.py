@@ -81,19 +81,20 @@ class StakeLimiter:
         self.epoch = epoch
 
     async def _get_key_refresh_ratio(self, key: str) -> float:
-        # Every access to key_ratio should pass through here so we
-        # can update the cache when its too old.
+        if self.whitelist is None:
+            return 1000.0
 
-        if not self.whitelist:
-            return 1000
-        if monotonic() - self.key_ratio_age > self.max_cache_age:
-            self.key_ratio = build_keys_refill_rate(
-                get_refill_rate=self.refiller_function,
-            )
-            self.key_ratio_age = monotonic()
-        ratio = self.key_ratio.get(key, 0)
+        # If the cache is stale, rebuild it
+        if self._time() - self.key_ratio_age > self.max_cache_age:
+            self.key_ratio = build_keys_refill_rate(get_refill_rate=self.refiller_function)
+            self.key_ratio_age = self._time()
+
+        # After: decode the key before lookup
+        decoded_key = ss58_decode(key)
+        ratio = self.key_ratio.get(decoded_key, 0)
+
         if ratio == 0:
-            return 0
+            return 0.0
         return ratio / self.epoch
 
     async def _get_key_ratio_per_epoch(self, key: str) -> float:
